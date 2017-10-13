@@ -1,0 +1,1127 @@
+---
+title: "Epidemiology of Co-Colonized Methicillin Resistant Staphylococcus aureus Associated ABSSSI"
+author: "Richard Evans"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r knitr_init, echo = FALSE, cache = FALSE, warning = FALSE}
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(rmdformats))
+
+## Global options
+options(max.print = "75")
+opts_chunk$set(echo = TRUE,
+	             cache = TRUE,
+               prompt = FALSE,
+               tidy = FALSE,
+               comment = NA,
+               message = FALSE,
+               warning = FALSE)
+opts_knit$set(width = 85)
+```
+
+# Introduction
+
+R language Rmarkdown document to accompany *Epidemiology of Co-Colonized Methicillin Resistant Staphylococcus aureus Associated Acute Bacterial Skin and Skin Structure Infection*.
+
+Cleaning of study data began in SAS v9.2 and project migrated to R shortly thereafter. Several sections of this analysis code did not contribute to the manuscript, they are left in the document to demonstrate data exploration and possible methods of analysis.
+
+# Libraries
+
+```{r}
+library(haven)       # import data - sas7bdat
+library(tidyverse)   # suite of data cleaning, processing, management functions
+library(magrittr)    # add() function, and `%<>%`
+library(visdat)      # visualize whole data frames
+library(tableone)    # CreateTableOne package
+library(knitr)       # Rmarkdown tables
+library(kableExtra)  # make Rmarkdown tables pretty
+```
+
+# Source Data
+
+```{r}
+setwd("S:/MartinEpi/Projects/Co-Infx/project/data")
+
+files <- list.files(pattern = "*.sas7bdat")
+file.names <- gsub(".sas7bdat", "", files)
+
+for (i in 1:length(files)) {
+  assign(file.names[i], read_sas(files[i]))
+}
+```
+
+# Process Data
+
+```{r}
+# dput(colnames(main_fixed))
+dates_to_convert <- c("adm_dat", "cult_dat")
+numeric_to_factor <- c("male", "obese", "eth", "race", "resid", "ltcf", "wound",
+                       "neutro", "surg_yr", "abx_yr", "device", 
+                       "diabetes", "diab_com", "amputat", 
+                       "retino", "neuro", "nephro", "hba_4", "renal", "chr_wnd", "wnd_site", 
+                       "wnd_pre", "steroid", "chemothp", "radiothp", "post_trn",
+                       "ulcer", "ulc_stg1", "ulc_stg2", "ulc_stg3", 
+                       "ulc_stg4", "cssti", "sepsis", "new_icu", "new_int", "new_surg", 
+                       "new_proc", "new_cvc", "new_uc", "new_arf", "new_liv", "new_endo", 
+                       "vaso", "abx_indx", "res_sus", "gram", "aerobe", "poly_infx", 
+                       "res_org", "bacter", "iso_org", "gram_r", "aerobe_r", "post_stat", 
+                       "fail_dth", "read_30", "infx_doc", "trt_fail", 
+                       "fail_res1", "fail_res2", 
+                       "fail_icu", "fail_org", "fail_reop", "fail_infx", 
+                       "fail_tot", "eld", "ulc", "extremity", "dth_study", "cssti1", 
+                       "cssti2", "cssti3", "cssti4", "year", "hosp", "black", "white", 
+                       "other", "home", "ltacf", "oth_resid", "emia", "EMDTH", "kidney", 
+                       "charl_cat", "cssti_lev", "vre",
+                       "switch", "switch_30", "dth_30"
+                       )
+
+tmp_fn <- function(x) as.Date(x, origin = "1960-01-01")
+
+main <- main_fixed %>%
+  mutate(
+    hba_4 = ifelse(hba_4 == '.' | hba_4 == '', NA, hba_4),
+    ulc_stg2 = ifelse(ulc_stg2 == '', NA, ulc_stg2),
+    ulc_stg3 = ifelse(ulc_stg3 == '', NA, ulc_stg3),
+    ulc_stg4 = ifelse(ulc_stg4 == '', NA, ulc_stg4),
+    fail_res2 = ifelse(fail_res2 == '', NA, fail_res2),
+    fail_dat = as.Date(fail_dat, "%m/%d/%Y")
+  ) %>%
+  mutate_at(dates_to_convert, funs(tmp_fn)) %>%
+  mutate_at(numeric_to_factor, funs(factor))
+```
+
+# Explore
+
+## Table 1
+
+### Continuous variables age and BMI
+```{r}
+print(CreateTableOne(vars = c("age", "bmi"),
+                     strata = "poly_infx",
+                     data = main),
+      nonnormal = c("age", "bmi"))
+```
+
+### Categorical variables
+```{r}
+# dput(colnames(main))
+cont_vars <- c("male","obese", "eth", "race", "resid", "ltcf", "wound",
+              "neutro", "surg_yr", "abx_yr", "device",
+              "diabetes", "diab_com", "amputat",
+              "retino", "neuro", "nephro", "hba_4", "renal", "chr_wnd", 
+              "wnd_site", "steroid", "chemothp", "radiothp", "post_trn", 
+              "ulcer", "ulc_stg1", "ulc_stg2", "ulc_stg3", 
+              "ulc_stg4", "cssti", "sepsis", "new_icu", "new_int", "new_surg", 
+              "new_proc", "new_cvc", "new_uc", "new_arf", "new_liv", "new_endo", 
+              "vaso", "abx_indx", "res_sus", "gram", "aerobe",
+              "res_org",  "bacter", "iso_org", "gram_r", "aerobe_r", 
+              "post_stat", "fail_dth", "read_30",
+              "infx_doc", "trt_fail", "fail_res1", "fail_res2", 
+              "fail_icu", "fail_org", "fail_reop", "fail_infx", 
+              "eld", "ulc", "extremity", "dth_study", "cssti1", 
+              "cssti2", "cssti3", "cssti4", "year", "hosp", "black", "white", 
+              "other", "home", "ltacf", "oth_resid", "emia", "EMDTH", "kidney", 
+              "charl_cat", "cssti_lev", "switch", "switch_30", "dth_30")
+
+print(CreateTableOne(vars = cont_vars,
+                     strata = "poly_infx",
+                     data = main,
+                     argsApprox = list(correct = FALSE)))
+```
+
+## Categorize ABSSSI site of infection
+
+```{r}
+# table(main$infx_site) %>% 
+#   as.data.frame() %>%
+#   head()
+
+# main %>% 
+#   select(infx_site, infx_site1) %>% 
+#   filter(infx_site1 == '')
+
+upper_extrem <- "antecubital|arm|axilla|elbow|eblow|forearm|armpit|wrist"
+lower_extrem <- "lower extremity|ankle|leg|knee|calf|heel|heal|malleolus|malleouls|patela|tibia|tiba|lower extremeties"
+buttock <- "glute|buttock|butttock|coccyx|sacrum|sacral|scral|gloeal|tailbone"
+hand <- "finger|hand|thumb"
+foot <- "toe|foot|feet|hallux"
+abdomen <- "abdomen|abdominal|abominal|peg|suprapubic|j tube"
+upper_body <- "breast|chest|shoulder|shcoulder|soulder|sternal|deltoid"
+back_sides <- "epidural|back|neck|psoas|cervical|lumbar|spine|spinal|hip|ischial|ischium|flank|side"
+blood <- "blood|picc|line sepsis"
+head <- "face|facial|chin|head|eye|brow|cheek|ear|parotid|temporal|nasal|nose|scalp|buccal|mandibula"
+groin_genitals <- "groin|inguinal|thigh|pelvic|pelvis|vulva|vulvar|penile|penis|scrotal|scrotum|vagina|vaginal"
+rectal <- "rectal|peri-rectal|rectal|perineum|perineal"
+respiratory <- "sputum|respiratory|tracheal|tracheostomy|lungs|lung"
+
+grepl_case <- function(pattern, x) {
+  return(grepl(pattern, x, ignore.case = TRUE, perl = TRUE))
+}
+
+main <- main %>%
+  mutate(
+    infx_site = gsub("\\s+", " ", infx_site),
+    site = ifelse(grepl_case(upper_extrem, infx_site), 'Upper Extremity', ''),
+    site = ifelse(grepl_case(lower_extrem, infx_site), 'Lower Extremity', site),
+    site = ifelse(grepl("LLE|LE|RLE", infx_site), "Lower Extremity", site),
+    site = ifelse(grepl_case(buttock, infx_site), 'Buttock', site),
+    site = ifelse(grepl_case(hand, infx_site), 'Hand', site),
+    site = ifelse(grepl_case(foot, infx_site), 'Foot', site),
+    site = ifelse(grepl_case(abdomen, infx_site), 'Abdomen', site),
+    site = ifelse(grepl_case(upper_body, infx_site), 'Upper Body', site),
+    site = ifelse(grepl_case(back_sides, infx_site), 'Back and Sides', site),
+    site = ifelse(grepl_case(blood, infx_site), 'Blood', site),
+    site = ifelse(grepl_case(head, infx_site), 'Head', site),
+    site = ifelse(grepl_case(groin_genitals, infx_site), 'Groin and Genitals', site),
+    site = ifelse(grepl_case(rectal, infx_site), 'Rectal', site),
+    site = ifelse(grepl_case(respiratory, infx_site), 'Respiratory', site),
+    infx_site1 = gsub("\\s+", " ", infx_site1),
+    site1 = ifelse(grepl_case(upper_extrem, infx_site1), 'Upper Extremity', ''),
+    site1 = ifelse(grepl_case(lower_extrem, infx_site1), 'Lower Extremity', site1),
+    site1 = ifelse(grepl("LLE|LE|RLE", infx_site1), "Lower Extremity", site1),
+    site1 = ifelse(grepl_case(buttock, infx_site1), 'Buttock', site1),
+    site1 = ifelse(grepl_case(hand, infx_site1), 'Hand', site1),
+    site1 = ifelse(grepl_case(foot, infx_site1), 'Foot', site1),
+    site1 = ifelse(grepl_case(abdomen, infx_site1), 'Abdomen', site1),
+    site1 = ifelse(grepl_case(upper_body, infx_site1), 'Upper Body', site1),
+    site1 = ifelse(grepl_case(back_sides, infx_site1), 'Back and Sides', site1),
+    site1 = ifelse(grepl_case(blood, infx_site1), 'Blood', site1),
+    site1 = ifelse(grepl_case(head, infx_site1), 'Head', site1),
+    site1 = ifelse(grepl_case(groin_genitals, infx_site1), 'Groin and Genitals', site1),
+    site1 = ifelse(grepl_case(rectal, infx_site1), 'Rectal', site1),
+    site1 = ifelse(grepl_case(respiratory, infx_site1), 'Respiratory', site1),
+    site1 = ifelse(site1 == '', 'Unknown', site1),
+    
+    site1 = ifelse((site1 == '' & site == 'Buttock'), 'Buttock', site1),
+    site1 = ifelse((site1 == '' & site == 'Blood'), 'Blood', site1),
+    site1 = ifelse((site1 == '' & site == 'Foot'), 'Foot', site1)
+    )
+```
+
+Good enough for now
+
+```{r}
+levs <- c("Head", "Upper Body", "Upper Extremity", "Hand", "Abdomen",
+          "Back and Sides", "Buttock", "Rectal", "Groin and Genitals",
+          "Lower Extremity", "Foot")
+
+sites_orgs <- main %>%
+  filter(poly_infx == 1) %>%
+  select(id, site1, abau:citro, unidentified) %>%
+  mutate(site1 = factor(site1, levels = levs))
+
+totals <- data.frame(
+  organism = names(sites_orgs[, -c(1, 2)]),
+  sum = sapply(sites_orgs[, -c(1, 2)], sum)
+  ) %>%
+  mutate(perc = round((sum / sum(sum)) * 100, 1))
+
+totals
+```
+
+## Categorize into aerobic vs. non-aerobic, gram (-) vs. (+), and fungal and mixture
+
+```{r}
+anaerobes <- c("b_fragilis", "bacteroid", "clost", "pepto")
+gram_neg <- c("aeru", "ecoli", "abau", "mirab", "kpneu", "eaero", "ecloa",
+              "proteus", "providencia", "morgan", "cfreu", "koxy", "afaecalis",
+              "prevotella", "serratia", "malt", "vulgar", "eikenella", "hinflu",
+              "mcatarr")
+gram_pos <- c("coryne", "faecalis", "strep", "sagal", "staph", "sviridan",
+              "faecium", "entero", "aureus", "lactobac", "spyogen", "sangin",
+              "aturi", "micro", "mavium")
+fungal <- c("albicans", "candida", "yeast", "fusarium")
+
+indicate_orgs <- function(df, str) {
+  ifelse(rowSums(df[, str]) >= 1, 1, 0)
+}
+
+main$anaerobic <- indicate_orgs(main, anaerobes)
+main$gram_neg <- indicate_orgs(main, gram_neg)
+main$gram_pos <- indicate_orgs(main, gram_pos)
+main$fungal <- indicate_orgs(main, fungal)
+
+types <- c("anaerobic", "gram_neg", "gram_pos", "fungal")
+main <- main %>%
+  mutate(
+    infx_type = ifelse(anaerobic == 1, 'Anaerobic', ''),
+    infx_type = ifelse(gram_neg == 1,  'Gram Negative', infx_type),
+    infx_type = ifelse(gram_pos == 1,  'Gram Positive', infx_type),
+    infx_type = ifelse(fungal == 1, 'Fungal', infx_type),
+    infx_type = ifelse(anaerobic == 1 & gram_neg == 1, 
+                       'Anaerobic, Gram Negative',
+                       infx_type),
+    infx_type = ifelse(anaerobic == 1 & gram_pos == 1,
+                       'Anaerobic, Gram Positive',
+                       infx_type),
+    infx_type = ifelse(anaerobic == 1 & fungal == 1,
+                       'Anaerobic, Fungal',
+                       infx_type),
+    infx_type = ifelse(gram_neg == 1 & gram_pos == 1,
+                       'Gram Negative, Gram Positive',
+                       infx_type),
+    infx_type = ifelse(gram_neg == 1 & fungal == 1,
+                       'Gram Negative, Fungal',
+                       infx_type),
+    infx_type = ifelse(gram_pos == 1 & fungal == 1,
+                       'Gram Positive, Fungal',
+                       infx_type),
+    infx_type = ifelse(anaerobic == 1 & gram_neg == 1 & gram_pos == 1 & fungal == 1,
+                       'Anaerobic, Gram Negative, Gram Positive, Fungal',
+                       infx_type)
+  )
+```
+
+```{r}
+sapply(main[, types], table)
+
+tab <- main %>%
+  filter(poly_infx == 1 & infx_type != '') %>%
+  select(infx_type, site1) %>%
+  group_by(site1, infx_type) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  mutate(percent = count / sum(count) * 100)
+
+tab
+```
+
+## By ABSSSI Site
+
+### Overall abundance per site
+
+```{r}
+data.frame(table(main$site1))
+```
+
+By co-colonizing site
+
+```{r}
+sites <- main[main$poly_infx == 1, "site1"]
+data.frame(table(sites))
+```
+
+### Most abundant Co-colonizing organisms by ABSSSI site
+
+```{r}
+co_colony.df <- main %>%
+  filter(poly_infx == 1) %>%
+  select(id, site1, abau:citro, unidentified, infx_type, cssti, diabetes)
+
+co_colony.df %>%
+  select(-id, -infx_type, -unidentified, -coryne, -cssti, -diabetes) %>%
+  reshape2::melt(id.vars = "site1") %>%
+  plyr::ddply(plyr::.(site1, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(site1) %>%
+  mutate(max = max(sum)) %>%
+  filter(sum == max)
+```
+
+## Heatmaps
+
+Define heatMap function
+
+```{r, warning = FALSE, message = FALSE}
+# import table
+setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+orgs <- readxl::read_excel("organism categories.xlsx", sheet = "type")
+# head(orgs)
+
+site_levels <- c("Head", "Upper Body", "Upper Extremity", "Hand",
+                 "Abdomen", "Back and Sides",
+                 "Buttock", "Rectal", "Foot", "Groin and Genitals",
+                 "Lower Extremity")
+
+heatMap <- function(df, x, y, fill, xlab,
+                    barheight = NULL, barwidth = NULL,
+                    legend_top = FALSE,
+                    angle = TRUE,
+                    yremove = FALSE) {
+  heat <- df %>%
+    ggplot(aes_string(x = x, y = y, fill = fill)) %>%
+    add(geom_tile()) %>%
+    add(scale_fill_gradient(low = "navyblue",
+                            high = "darkorange1")) %>%
+    add(theme_minimal(14)) %>%
+    add(scale_y_discrete(limits = rev(levels(df$variable)))) %>%
+    add(labs(
+      x = xlab,
+      y = "",
+      fill = "Proportion"
+    ))
+  if (angle) 
+    heat <- heat + theme(
+      axis.text.x = element_text(angle = 45,
+                                 hjust = 1,
+                                 face = "bold")
+    )
+  if (legend_top) 
+    heat <- heat + 
+      theme(legend.position = "top") +
+      guides(fill = guide_colorbar(barwidth = barwidth,
+                                   barheight = barheight))
+  else
+    heat <- heat + guides(fill = guide_colorbar(barheight = barheight))
+  if (yremove) 
+    heat <- heat + theme(
+      axis.title.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  return(heat)
+}
+```
+
+### All organisms by MRSA ABSSSI site
+
+Need to combine some sites due to sparsity
+
+```{r}
+co_colony.comb <- co_colony.df %>%
+  mutate(
+    site1 = ifelse(site1 == 'Head', 'Upper Body', site1),
+    site1 = ifelse(site1 == 'Hand', 'Upper Extremity', site1),
+    site1 = ifelse(site1 == 'Rectal', 'Buttock', site1),
+    site1 = ifelse(site1 == 'Foot', 'Lower Extremity', site1)
+  )
+```
+
+```{r}
+site.heat1 <- co_colony.comb %>%
+  filter(!(site1 %in% c('Respiratory', 'Unknown', 'Blood'))) %>%
+  select(-id, -infx_type, -unidentified, -cssti, -diabetes) %>%
+  reshape2::melt(id.vars = "site1") %>%
+  mutate(
+    site1 = factor(site1,
+                   levels = site_levels,
+                   labels = site_levels)
+  ) %>%
+  plyr::ddply(plyr::.(site1, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(site1) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = as.character(variable),
+    variable = factor(variable,
+                      levels = orgs$varname,
+                      labels = orgs$species)
+    ) %>%
+  ungroup()
+
+site.heatmap1 <- heatMap(site.heat1, barheight = 31.75,
+                         x = 'site1', y = 'variable', fill = 'prop',
+                         xlab = "\n MRSA ABSSSI site")
+site.heatmap1
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("site_heatmap1_all_comb.tiff",
+#      width = 6, height = 8, units = "in", res = 300)
+# site.heatmap1
+# dev.off()
+```
+
+### MRSA ABSSSI site by organism importance
+
+```{r}
+important <- orgs %>%
+  filter(!(varname %in% c('providencia', 'afaecalis', 'prevotella', 'serratia', 
+                          'eikenella', 'mcatarr', 'citro', 'coryne', 'lactobac',
+                          'aturi', 'micro',' mavium', 'fusarium', 'yeast',
+                          'hinflu', 'mavium', 'vulgar')))
+
+site.heat2 <- co_colony.df %>%
+  filter(!(site1 %in% c('Respiratory', 'Unknown', 'Blood'))) %>%
+  select(-id, -infx_type, -unidentified, -cssti, -diabetes) %>%
+  reshape2::melt(id.vars = "site1") %>%
+  mutate(
+    site1 = factor(site1,
+                   levels = site_levels,
+                   labels = site_levels)
+  ) %>%
+  filter(variable %in% important$varname) %>%
+  plyr::ddply(plyr::.(site1, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(site1) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = as.character(variable),
+    variable = factor(variable,
+                      levels = important$varname,
+                      labels = important$species)
+    ) %>% ungroup()
+
+site.heatmap2 <- heatMap(site.heat2, barheight = 31.75,
+                         x = "site1", y = "variable", fill = "prop",
+                         xlab = "\n MRSA ABSSSI site")
+site.heatmap2
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("site_heatmap2_important_comb.tiff",
+#      width = 6, height = 8, units = "in", res = 300)
+# site.heatmap2
+# dev.off()
+```
+
+### All organisms by ABSSSI/cSSTI class
+
+```{r}
+cssti.heat1 <- co_colony.df %>%
+  mutate(cssti = factor(cssti, 
+                        levels = paste0(seq(1:4)),
+                        labels = paste0(rep("class ", 4), 1:4))) %>%
+  filter(!(site1 %in% c('Respiratory', 'Unknown', 'Blood'))) %>%
+  select(-id, -infx_type, -unidentified, -site1, -diabetes) %>%
+  reshape2::melt(id.vars = "cssti") %>%
+  plyr::ddply(plyr::.(cssti, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(cssti) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = as.character(variable),
+    variable = factor(variable,
+                      levels = orgs$varname,
+                      labels = orgs$species)
+    ) %>% ungroup()
+
+cssti.heatmap1 <- heatMap(cssti.heat1, barheight = 35.6,
+                          x = "cssti", y = "variable", fill = "prop",
+                          xlab = "\n ABSSSI class",
+                          angle = FALSE)
+
+cssti.heatmap1
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("cssti_heatmap1_all_comb.tiff",
+#      width = 6, height = 8, units = "in", res = 300)
+# cssti.heatmap1
+# dev.off()
+```
+
+### Important organisms by ABSSSI/cSSTI class
+
+```{r}
+cssti.heat2 <- co_colony.df %>%
+  mutate(cssti = factor(cssti, 
+                        levels = paste0(seq(1:4)),
+                        labels = paste0(rep("class ", 4), 1:4))) %>%
+  filter(!(site1 %in% c('Respiratory', 'Unknown', 'Blood'))) %>%
+  select(-id, -infx_type, -unidentified, -site1, -diabetes) %>%
+  reshape2::melt(id.vars = "cssti") %>%
+  filter(variable %in% important$varname) %>%
+  plyr::ddply(plyr::.(cssti, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(cssti) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = as.character(variable),
+    variable = factor(variable,
+                      levels = important$varname,
+                      labels = important$species)
+    ) %>% ungroup()
+
+cssti.heatmap2 <- heatMap(cssti.heat2, barheight = 35.6,
+                          x = "cssti", y = "variable", fill = "prop",
+                          xlab = "\n ABSSSI class",
+                          angle = FALSE)
+
+cssti.heatmap2
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("cssti_heatmap2_important.tiff",
+#      width = 6, height = 8, units = "in", res = 300)
+# cssti.heatmap2
+# dev.off()
+```
+
+```{r, echo = FALSE, eval = FALSE}
+cssti.heat3 <- cssti.heat1 %>%
+  rename(site_or_cssti = cssti) %>%
+  mutate(
+    site_or_cssti = as.character(site_or_cssti),
+    variable = as.character(variable),
+    type = 'MRSA ABSSSI Class'
+  ) %>%
+  select(-sum)
+
+site.heat3 <- site.heat1 %>%
+  rename(site_or_cssti = site1) %>%
+  mutate(
+    site_or_cssti = as.character(site_or_cssti),
+    variable = as.character(variable),
+    type = "MRSA ABSSSI Site"
+  ) %>%
+  select(-sum)
+
+levs_and_labs <- union(levels(site.heat1$site1), 
+                       levels(cssti.heat1$cssti))
+
+heat3 <- rbind(site.heat3, cssti.heat3) %>%
+  mutate(
+    variable = factor(variable,
+                      levels = orgs$species,
+                      labels = orgs$species),
+    site_or_cssti = factor(site_or_cssti,
+                           levels = levs_and_labs,
+                           labels = levs_and_labs),
+    type = factor(type)
+  ) %>%
+  ggplot(aes(x = site_or_cssti, y = variable, fill = prop)) %>%
+  add(geom_tile()) %>%
+  add(scale_fill_gradient(low = "navyblue",
+                          high = "darkorange1")) %>%
+  add(facet_wrap(~type, scales = "free_x")) %>%
+  add(scale_y_discrete(limits = levels(site.heat1$variable))) %>%
+  add(theme_minimal(base_size = 18)) %>%
+  add(guides(fill = guide_colorbar(barheight = 48.5))) %>%
+  add(theme(axis.text.x = element_text(angle = 330, hjust = 0))) %>%
+  add(labs(
+    x = "",
+    y = "",
+    fill = "Proportion"
+    ))
+heat3
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("csstiXsite_hmap_all_comb.tiff",
+#      width = 12, height = 12, units = "in", res = 300)
+# heat3
+# dev.off()
+```
+
+```{r, echo = FALSE, eval = FALSE}
+cssti.heat4 <- cssti.heat2 %>%
+  rename(site_or_cssti = cssti) %>%
+  mutate(
+    site_or_cssti = as.character(site_or_cssti),
+    variable = as.character(variable),
+    type = 'MRSA ABSSSI Class'
+  ) %>%
+  select(-sum)
+
+site.heat4 <- site.heat2 %>%
+  rename(site_or_cssti = site1) %>%
+  mutate(
+    site_or_cssti = as.character(site_or_cssti),
+    variable = as.character(variable),
+    type = "MRSA ABSSSI Site"
+  ) %>%
+  select(-sum)
+
+levs_and_labs <- union(levels(site.heat2$site1), 
+                       levels(cssti.heat2$cssti))
+
+heat4 <- rbind(site.heat4, cssti.heat4) %>%
+  mutate(
+    variable = factor(variable,
+                      levels = important$species,
+                      labels = important$species),
+    site_or_cssti = factor(site_or_cssti,
+                           levels = levs_and_labs,
+                           labels = levs_and_labs),
+    type = factor(type)
+  ) %>%
+  ggplot(aes(x = site_or_cssti, y = variable, fill = prop)) %>%
+  add(geom_tile()) %>%
+  add(scale_fill_gradient(low = "navyblue",
+                          high = "darkorange1")) %>%
+  add(facet_wrap(~type, scales = "free_x")) %>%
+  add(scale_y_discrete(limits = rev(levels(site.heat2$variable)))) %>%
+  add(theme_minimal(18)) %>%
+  add(guides(fill = guide_colorbar(barheight = 42))) %>%
+  add(theme(axis.text.x = element_text(angle = 330, hjust = 0))) %>%
+  add(labs(
+    x = "",
+    y = "",
+    fill = "Proportion"
+    ))
+
+heat4
+
+# tiff("csstiXsite_hmap_important.tiff",
+#      width = 10, height = 10, units = "in", res = 300)
+# heat4
+# dev.off()
+```
+
+## community analyses
+
+multi-response permutation procedure (MRPP)
+
+### community differences in ABSSSI culture by cSSTI/ABSSSI classification
+
+Removing 'rare' species
+
+```{r}
+csstiXorg <- co_colony.df %>%
+  select(cssti, aeru, ecoli, abau, mirab, kpneu, ecloa, proteus, coryne, strep,
+         sagal, staph, faecium, faecalis, albicans, candida) %>%
+  mutate(
+    sumVar = rowSums(.[2:15]),
+    cssti = factor(cssti,
+                   levels = paste0(1:4),
+                   labels = paste0(rep("Class ", 4), 1:4))) %>%
+  filter(sumVar > 0) %>%
+  select(-sumVar) %>%
+  na.omit() %>%
+  as.data.frame()
+```
+
+```{r}
+library(vegan)
+set.seed(1233)
+cssti.mrpp <- mrpp(csstiXorg[-1], csstiXorg$cssti, permutations = 1000)
+cssti.mrpp
+```
+
+The MRPP provides a test of whether there is a significant difference between two or more groups of sampling units. Similar to components analysis, we are examining the differences in communities between ABSSSI/cSSTI classes. The p-value for the $\delta$ statistic from this procedure indicates a non-significant difference in community (p = `r cssti.mrpp$pvalue`). $\delta$ itself is the group mean difference calculated from each of the permuted datasets (N = 999).
+
+Mean distance/mean within and between block dissimilarities. This calculates a matrix of mean within-cluster dissimilarities (the diagonal) and between-cluster dissimilarities (off-diagonal entries), and an attribute n of grouping counts.
+
+```{r}
+cssti.md <- meandist(vegdist(csstiXorg[-1]), csstiXorg$cssti)
+summary(cssti.md)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+with(cssti.mrpp, {
+  fig.dist <- hist(boot.deltas, xlim = range(c(delta, boot.deltas)),
+                   main = "Test of Differences Among Groups",
+                   xlab = "Bootstrapped Delta")
+  abline(v = delta);
+  text(delta, 2*mean(fig.dist$counts), adj = -0.5,
+       expression(bold(delta)), cex = 1.5)
+})
+plot(cssti.md, kind = "histogram", 
+     main = "Within-group and between-group dissimilarities")
+```
+
+In the right-hand plot above, the horizontal line is drawn at the level of mean between-cluster dissimilarity and vertical lines connect within-cluster dissimilarities to this line.
+
+### community differences in ABSSSI culture by diabetic status
+
+Same treatment for diabetic patients (vs. non-diabetics)
+
+```{r}
+diabXorg <- co_colony.df %>%
+  select(diabetes, aeru, ecoli, abau, mirab, 
+         kpneu, ecloa, proteus, coryne, strep,
+         sagal, staph, faecium, faecalis, albicans, 
+         candida) %>%
+  mutate(
+    sumVar = rowSums(.[2:15]),
+    diabetes = factor(diabetes,
+                      levels = c(0, 1),
+                      labels = c("Non-Diabetic", "Diabetic"))
+    ) %>%
+  filter(sumVar > 0) %>%
+  select(-sumVar) %>%
+  na.omit() %>%
+  as.data.frame()
+```
+
+```{r}
+set.seed(1233)
+diab.mrpp <- mrpp(diabXorg[-1], diabXorg$diabetes, permutations = 1000)
+diab.mrpp
+```
+
+Mean distance by diabetic grouping
+
+```{r}
+diab.md <- meandist(vegdist(diabXorg[-1]), diabXorg$diabetes)
+summary(diab.md)
+```
+
+```{r}
+plot(diab.md, kind = "dendrogram", 
+     main = "MRSA ABSSSI Community Dendrogram - Diabetic Status")
+text(2, 0.865, "MRPP p-val < 0.01")
+```
+
+```{r}
+par(mfrow = c(1, 2))
+with(diab.mrpp, {
+  fig.dist <- hist(boot.deltas, xlim = range(c(delta, boot.deltas)),
+                   main = "Test of Differences Among Groups",
+                   xlab = "Bootstrapped Delta")
+  abline(v = delta);
+  text(delta, 2 * mean(fig.dist$counts), adj = -0.5,
+       expression(bold(delta)), cex = 1.5)
+})
+plot(diab.md, kind = "dendrogram", 
+     main = "Within-group and between-group dissimilarities")
+```
+
+Diabetics may have different distributions of organisms in their MRSA ABSSSIs (p = `r diab.mrpp$Pvalue`).
+
+Let's look at a heatmap of co-colonizing organisms faceted by diabetic status to see if we can identify differences
+
+```{r}
+diab.heat1 <- co_colony.df %>%
+  mutate(diabetes = factor(diabetes, 
+                      levels = c(0, 1),
+                      labels = c("Non-diabetic", "Diabetic"))) %>%
+  filter(!(site1 %in% c('Respiratory', 'Unknown', 'Blood'))) %>%
+  select(-id, -infx_type, -unidentified, -cssti, -site1) %>%
+  reshape2::melt(id.vars = "diabetes") %>%
+  plyr::ddply(plyr::.(diabetes, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(diabetes) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = as.character(variable),
+    variable = factor(variable,
+                      levels = orgs$varname,
+                      labels = orgs$species)
+    ) %>%
+  ungroup() %>%
+  ggplot(aes(x = diabetes, y = variable)) %>%
+  add(geom_tile(aes(fill = prop))) %>%
+  add(scale_fill_gradient(low = "navyblue",
+                          high = "darkorange1")) %>%
+  add(theme_minimal(18)) %>%
+  add(scale_y_discrete(limits = rev(levels(site.heat1$variable)))) %>%
+  add(guides(fill = guide_colorbar(barheight = 21.5))) %>%
+  add(labs(
+    x = "",
+    y = "",
+    fill = "%"
+    ))
+
+diab.heat1
+
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents")
+# tiff("diabetes_hmap_all.tiff",
+#      width = 4, height = 5, units = "in", res = 300)
+# diab.heat1
+# dev.off()
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents")
+# tiff("community_analyses.tiff",
+#      width = 12, height = 6, units = "in", res = 300)
+# par(mfrow = c(1, 2))
+# plot(cssti.md, kind = "dendrogram", 
+#      main = "Community Difference Dendrogram - cSSTI class")
+# text(1.2, 0.845, "MRPP p-val = 0.07")
+# 
+# plot(diab.md, kind = "dendrogram", 
+#      main = "Community Differences Dendrogram - Diabetic status")
+# text(2, 0.863, "MRPP p-val = <0.01")
+# dev.off()
+```
+
+# Risk factor modelling
+
+```{r}
+main_ml <- main %>%
+  select(male, poly_infx, eld, obese, black, ltacf, diabetes,
+         kidney, device, chr_wnd, charl_cat, surg_yr, abx_yr, 
+         cssti_lev, los)
+```
+
+Impute missing data
+
+```{r}
+pMiss <- function(x) (sum(is.na(x)) / length(x)) * 100
+apply(main_ml, 2, pMiss)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(mice)
+main_impute <- mice(main_ml, m = 5, maxit = 50, meth = "pmm", printFlag = FALSE)
+main_imputed <- complete(main_impute, 1)
+```
+
+testing and training
+
+```{r}
+partition <- caret::createDataPartition(main_imputed$poly_infx,
+                                        p = 0.7,
+                                        list = FALSE)
+main_train <- main_imputed[partition, ]
+main_test <- main_imputed[-partition, ]
+dim(main_train); dim(main_test)
+
+# some models require all variables to be numeric (no factors)
+main_train_num <- main_train %>%
+  mutate_all(funs(as.numeric)) %>%
+  mutate_at(vars(male:cssti_lev), funs(. - 1))
+
+main_test_num <- main_test %>%
+  mutate_all(funs(as.numeric)) %>%
+  mutate_at(vars(male:cssti_lev), funs(. - 1))
+```
+
+## Fast and Frugal Trees
+
+```{r}
+library(FFTrees)
+coinfx.fft <- FFTrees(poly_infx ~ .,
+                      data = main_train_num,
+                      data.test = main_test_num,
+                      main = "Co-Colonized MRSA ABSSSI",
+                      decision.labels = c("Mono-Microbial", "Polymicrobial"))
+```
+
+```{r}
+coinfx.fft
+summary(coinfx.fft)
+```
+
+```{r}
+plot(coinfx.fft, data = "test")
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("coinfx_fft.tiff", height = 12, width = 10, units = "in", res = 300)
+# plot(coinfx.fft, data = "test",
+#      cue.cex = 2,
+#      threshold.cex = 2,
+#      decision.cex = 2)
+# dev.off()
+```
+
+```{r}
+plot(coinfx.fft, what = "cues")
+```
+
+```{r}
+# coinfx.fff <- FFForest(poly_infx ~ .,
+#                        data = rbind(main_train_num, main_test_num),
+#                        ntree = 100,
+#                        train.p = 0.8)
+setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# saveRDS(coinfx.fff, "coinfx_fff.rds")
+coinfx.fff <- readRDS("coinfx_fff.rds")
+coinfx.fff
+# tiff("forest_of_FFTs.tiff", height = 12, width = 12, units = "in", res = 300)
+# plot(coinfx.fff, node.cex.lim = c(8, 16), line.cex.lim = c(0.8, 10))
+# dev.off()
+```
+
+The above Fast and Frugal tree and forest suggests LTCF residence, LOS > 6 days, and a Charlson Score $\ge$ 4 as the 'biggest' predictors of a polymicrobial MRSA ABSSSI. A CSSTI level of 4+ and the existence of a medical device were so-so predictors.
+
+## Logistic regression
+
+```{r}
+library(h2o)
+h2o.init()
+predictors <- colnames(main_train)[-2]
+response <- "poly_infx"
+df.train <- as.h2o(main_train)
+df.test <- as.h2o(main_test)
+
+coinfx.lr <- h2o.glm(family = "binomial", x = predictors, y = response,
+                     training_frame = df.train, lambda = 0,
+                     compute_p_values = TRUE)
+
+coinfx.lr@model$coefficients_table
+
+h2o.std_coef_plot(coinfx.lr)
+perf <- h2o.performance(coinfx.lr, df.test)
+h2o.confusionMatrix(perf)
+```
+
+Accuracy is `r  round(((56 + 96) / (96 + 34 + 19 + 56)) * 100, 2)`%
+
+The error rate is `r round((1 - (56 + 96) / (96 + 34 + 19 + 56)) * 100, 2)`%
+
+## Gradient Boosting and Random Forest
+
+2 - model ensemble: Gradient Boosting and Random Forest
+
+```{r}
+# train and cross-validate GBM
+coinfx.gbm <- h2o.gbm(x = predictors, y = response,
+                      training_frame = df.train,
+                      distribution = "bernoulli",
+                      ntrees = 10,
+                      max_depth = 3,
+                      min_rows = 2,
+                      learn_rate = 0.2,
+                      nfolds = 5,
+                      fold_assignment = "Modulo",
+                      keep_cross_validation_predictions = TRUE)
+
+perf <- h2o.performance(coinfx.gbm, df.test)
+h2o.confusionMatrix(perf)
+h2o.varimp_plot(coinfx.gbm)
+```
+
+Accuracy is `r  round(((57 + 91) / (91 + 39 + 18 + 57)) * 100, 2)`%
+
+The error rate is `r round((1 - (57 + 91) / (91 + 39 + 18 + 57)) * 100, 2)`%
+
+```{r}
+# train and cross-validate RF
+coinfx.rf <- h2o.randomForest(x = predictors, y = response,
+                              training_frame = df.train,
+                              ntrees = 100,
+                              nfolds = 5,
+                              fold_assignment = "Modulo",
+                              keep_cross_validation_predictions = TRUE)
+
+perf <- h2o.performance(coinfx.rf, df.test)
+h2o.confusionMatrix(perf)
+h2o.varimp_plot(coinfx.rf)
+```
+
+Accuracy is `r  round(((79 + 60) / (79 + 51 + 15 + 60)) * 100, 2)`%
+
+The error rate is `r round((1 - (79 + 69) / (79 + 51 + 15 + 60)) * 100, 2)`%
+
+Worse than GBM
+
+# Outcome modelling
+
+Table 4 in Evans **et al.**
+
+Univariate
+
+```{r}
+outcomes <- c("read_30", "new_icu", "new_int", 
+              "new_surg", "new_cvc", "new_uc", "dth_30")
+outcome.df <- main %>%
+  mutate_at(vars(outcomes), funs(as.numeric)) %>%
+  mutate_at(vars(outcomes), funs(. - 1)) %>%
+  as.data.frame()
+
+psych::describe(main$los)
+par(mfrow = c(1, 2))
+plot(density(main$los)); hist(main$los)
+```
+
+Trying negative binomial regression
+
+```{r}
+library(MASS)
+los_nb <- glm.nb(los ~ poly_infx, data = main)
+summary(los_nb)
+
+test <- glm(los ~ poly_infx, family = "poisson", data = main)
+pchisq(2 * (logLik(los_nb) - logLik(test)), df = 1, lower.tail = FALSE)
+
+RR <- exp(cbind(estimate = coef(los_nb), confint(los_nb)))
+RR
+detach('package:MASS')
+rm(los_nb, test, RR)
+```
+
+having a polymicrobial MRSA ABSSSI increases the expected log count of the number of days in the hospital by 0.74 vs.a mono-microbial MRSA ABSSSI
+
+```{r, warning = FALSE, message = FALSE}
+lapply(outcome.df[, outcomes],
+       function(var) {
+         mod <- glm(var ~ poly_infx, data = outcome.df, family = binomial)
+         OR <- exp(mod$coefficients)
+         CI <- exp(confint(mod))
+         cbind(OR, CI)
+       })
+```
+
+Table 5 in Evans **et al.**
+
+Multivariate Outcomes
+
+```{r, warning = FALSE, message = FALSE}
+lapply(outcome.df[, outcomes],
+       function(var) {
+         mod <- glm(var ~ poly_infx + age + chr_wnd + charl_cat + cssti_lev,
+                    data = outcome.df,
+                    family = binomial)
+         n <- length(mod$residuals)
+         prop <- round((n / 688) * 100, 2)
+         OR <- exp(mod$coefficients)
+         CI <- exp(confint(mod))
+         cbind(OR, CI, n, prop)
+       })
+```
+
+Stratifying/adjusting this analysis by ABSSSI site
+
+```{r}
+# reduce sites to simpler categories
+main.sites <- main %>%
+  mutate(
+    site = ifelse(site1 == 'Head', 'Upper Body', site1),
+    site = ifelse(site == 'Hand', 'Upper Extremity', site),
+    site = ifelse(site == 'Rectal', 'Buttock', site),
+    site = ifelse(site == 'Foot', 'Lower Extremity', site),
+    site = ifelse(site %in% c('Blood', 'Respiratory'), 'Unknown', site)
+  ) %>%
+  mutate_at(vars(outcomes), funs(as.numeric)) %>%
+  mutate_at(vars(outcomes), funs(. - 1)) %>%
+  filter(site != 'Unknown') %>%
+  as.data.frame()
+
+table(main.sites$site)
+dim(main.sites)
+```
+
+```{r}
+lapply(main.sites[, outcomes],
+       function(var) {
+         mod <- glm(var ~ poly_infx + age + chr_wnd + charl_cat + cssti_lev + site,
+                    data = main.sites,
+                    family = binomial)
+         n <- length(mod$residuals)
+         prop <- round((n / 688) * 100, 2)
+         OR <- exp(mod$coefficients)
+         CI <- exp(confint(mod))
+         cbind(OR, CI, n, prop)
+       })
+```
+
+## Stratified analysis
+
+Subsets analysis
+
+```{r}
+site_cats <- unique(main.sites$site)
+stratLogit <- function(var) {
+  form <- as.formula(paste0(var, "~ poly_infx+age+chr_wnd+charl_cat+cssti_lev"))
+  models <- vector("list", length(site_cats))
+  for (i in 1:length(site_cats)) {
+    name <- site_cats[i]
+    mod <- glm(formula = form,
+               data = main.sites,
+               subset = (site == site_cats[i]),
+               family = binomial)
+    n <- length(mod$residuals)
+    prop <- round((n / 688) * 100, 2)
+    OR <- round(exp(mod$coefficients)[2], 2)
+    LB <- round(as.numeric(exp(confint(mod))[2, 1]), 2)
+    UB <- round(as.numeric(exp(confint(mod))[2, 2]), 2)
+    models[[i]] <- cbind(OR, LB, UB, n, prop)
+  }
+  models <- do.call(rbind, models)
+  row.names(models) <- site_cats
+  return(models)
+}
+
+modelLists <- vector("list", length(outcomes))
+for(i in 1:length(outcomes)) {
+  modelLists[[i]] <- stratLogit(outcomes[i])
+}
+names(modelLists) <- outcomes
+
+modelLists
+```
+
