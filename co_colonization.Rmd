@@ -13,8 +13,8 @@ output:
 ---
 
 ```{r knitr_init, echo = FALSE, cache = FALSE, warning = FALSE}
-suppressPackageStartupMessages(library(knitr))
-suppressPackageStartupMessages(library(rmdformats))
+library(knitr)
+library(rmdformats)
 
 ## Global options
 options(max.print = "75")
@@ -48,7 +48,7 @@ library(kableExtra)  # make Rmarkdown tables pretty
 
 # Source Data
 
-```{r}
+```{r, message = FALSE, warning = FALSE}
 setwd("S:/MartinEpi/Projects/Co-Infx/project/data")
 
 files <- list.files(pattern = "*.sas7bdat")
@@ -112,6 +112,7 @@ print(CreateTableOne(vars = c("age", "bmi"),
 ```
 
 ### Categorical variables
+
 ```{r}
 # dput(colnames(main))
 cont_vars <- c("male","obese", "eth", "race", "resid", "ltcf", "wound",
@@ -295,6 +296,38 @@ tab <- main %>%
 tab
 ```
 
+How many organisms in each polymicrobial infection? Evidently, and intuitively, frequency of organisms in a wound increases bioburden. Can test this with outcomes against total count of organisms in polymicrobial MRSA ABSSSI.
+
+```{r}
+main <- main %>%
+  mutate(
+    org_sum = rowSums(.[c(116:159, 161)]),
+    org_sum = ifelse(poly_infx == 0, NA, org_sum)
+  )
+
+psych::describe(main$org_sum)
+```
+
+Fix VRE
+
+```{r}
+main <- main %>%
+  mutate(
+    vre = ifelse(grepl("VRE", resist), 1, 0),
+    tmp = as.character(resist),
+    tmp = tolower(tmp),
+    tmp = gsub(" ", "", tmp),
+    vre_faecalis = ifelse(grepl("vre.faecalis", tmp), 1, 0),
+    vre_faecium = ifelse(grepl("vre.faecium", tmp), 1, 0)
+  ) %>%
+  select(-tmp)
+```
+
+```{r}
+with(main, table(vre_faecalis, faecalis))
+with(main, table(vre_faecium, faecium))
+```
+
 ## By ABSSSI Site
 
 ### Overall abundance per site
@@ -340,8 +373,21 @@ orgs <- readxl::read_excel("organism categories.xlsx", sheet = "type")
 
 site_levels <- c("Head", "Upper Body", "Upper Extremity", "Hand",
                  "Abdomen", "Back and Sides",
-                 "Buttock", "Rectal", "Foot", "Groin and Genitals",
-                 "Lower Extremity")
+                 "Buttock", "Rectal", "Groin and Genitals",
+                 "Lower Extremity", "Foot")
+
+# function to generate heatmaps for our specific needs
+# requires ggplot2, magrittr
+#' @param df data.frame object holding variables x, y, and fill
+#' @param x vector of character or factor values for the x axis
+#' @param y vector of character or factor values for the y axis
+#' @param fill vector of numeric values for heat intensities
+#' @param xlab label for x-axis
+#' @param barheight height of the guide legend bar
+#' @param barwidth width of the guide legend bar
+#' @param legend_top position guide legend at top of heatmap
+#' @param angle angle of x-axis ticks
+#' @param yremove if TRUE, remove all y axis items
 
 heatMap <- function(df, x, y, fill, xlab,
                     barheight = NULL, barwidth = NULL,
@@ -596,9 +642,8 @@ heat3 <- rbind(site.heat3, cssti.heat3) %>%
     ))
 heat3
 
-# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
 # tiff("csstiXsite_hmap_all_comb.tiff",
-#      width = 12, height = 12, units = "in", res = 300)
+#      width = 12, height = 12, units = "in", res = 700, compression = "lzw")
 # heat3
 # dev.off()
 ```
@@ -653,16 +698,16 @@ heat4 <- rbind(site.heat4, cssti.heat4) %>%
 heat4
 
 # tiff("csstiXsite_hmap_important.tiff",
-#      width = 10, height = 10, units = "in", res = 300)
+#      width = 10, height = 10, units = "in", res = 700, compression = "lzw")
 # heat4
 # dev.off()
 ```
 
-## community analyses
+# Polymicrobial distribution analyses
 
 multi-response permutation procedure (MRPP)
 
-### community differences in ABSSSI culture by cSSTI/ABSSSI classification
+## Distribution differences by cSSTI/ABSSSI classification
 
 Removing 'rare' species
 
@@ -680,6 +725,8 @@ csstiXorg <- co_colony.df %>%
   na.omit() %>%
   as.data.frame()
 ```
+
+Performing the MRPP
 
 ```{r}
 library(vegan)
@@ -713,15 +760,15 @@ plot(cssti.md, kind = "histogram",
 
 In the right-hand plot above, the horizontal line is drawn at the level of mean between-cluster dissimilarity and vertical lines connect within-cluster dissimilarities to this line.
 
-### community differences in ABSSSI culture by diabetic status
+## Distribution differences by diabetic status
 
 Same treatment for diabetic patients (vs. non-diabetics)
 
 ```{r}
 diabXorg <- co_colony.df %>%
   select(diabetes, aeru, ecoli, abau, mirab, 
-         kpneu, ecloa, proteus, coryne, strep,
-         sagal, staph, faecium, faecalis, albicans, 
+         kpneu, ecloa, coryne, strep, sagal, 
+         staph, faecium, faecalis, albicans, 
          candida) %>%
   mutate(
     sumVar = rowSums(.[2:15]),
@@ -752,6 +799,54 @@ summary(diab.md)
 plot(diab.md, kind = "dendrogram", 
      main = "MRSA ABSSSI Community Dendrogram - Diabetic Status")
 text(2, 0.865, "MRPP p-val < 0.01")
+```
+
+A ggplot2 version of this dendrogram
+
+```{r, echo = FALSE, eval = TRUE}
+# true minimal theme for plotting ggplot objects
+theme_trueMinimal <- function(base_size = 16, base_family = "") {
+    theme_bw(base_size = base_size, base_family = base_family) %+replace% 
+        theme(axis.ticks = element_blank(), 
+              legend.background = element_blank(), 
+              legend.key = element_blank(), 
+              panel.background = element_blank(), 
+              strip.background = element_blank(), 
+              panel.border = element_blank(),
+              panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),
+              plot.background = element_blank(), 
+              axis.line = element_line(), 
+              axis.line.y = element_blank(),
+              complete = TRUE)
+}
+```
+
+```{r}
+dendro <- data.frame(
+  x = c(0.4, 1), 
+  y = c(0.8636266, 0.8701293),
+  label = c("Non-Diabetic", "Diabetic")
+  ) %>% 
+  ggplot(aes(x = x, y = y, label = label)) %>% 
+  add(geom_segment(aes(x = 0.4, xend = 1, y = 0.8805288, yend = 0.8805288))) %>%
+  add(geom_segment(aes(x = 0.4, xend = 0.4, y = 0.8805288, yend = 0.8636266))) %>%
+  add(geom_segment(aes(x = 1, xend = 1, y = 0.8805288, yend = 0.8701293))) %>%
+  add(geom_text(vjust = 1)) %>%
+  add(annotate("text", x = 1, y = 0.865, label = "MRPP p-val < 0.01")) %>%
+  add(expand_limits(x = c(-0.3, 1.5))) %>%
+  add(theme_minimal(16)) %>%
+  add(labs(
+    x = "", 
+    y = "Mean Distance\n",
+    title = ""
+    )) %>%
+  add(theme(
+    axis.text.x = element_blank(),
+    axis.line.x = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  ))
+dendro
 ```
 
 ```{r}
@@ -798,7 +893,7 @@ diab.heat1 <- co_colony.df %>%
                           high = "darkorange1")) %>%
   add(theme_minimal(18)) %>%
   add(scale_y_discrete(limits = rev(levels(site.heat1$variable)))) %>%
-  add(guides(fill = guide_colorbar(barheight = 21.5))) %>%
+  add(guides(fill = guide_colorbar(barheight = 30))) %>%
   add(labs(
     x = "",
     y = "",
@@ -807,11 +902,22 @@ diab.heat1 <- co_colony.df %>%
 
 diab.heat1
 
-# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents")
-# tiff("diabetes_hmap_all.tiff",
-#      width = 4, height = 5, units = "in", res = 300)
-# diab.heat1
-# dev.off()
+# ggsave("diabetes_hmap_all.tiff", diab.heat1,
+#        device = "tiff",
+#        width = 8, height = 8, units = "in",
+#        dpi = 700, compression = "lzw")
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# g <- cowplot::plot_grid(dendro, diab.heat1,
+#                         labels = c("A", "B"),
+#                         ncol = 1,
+#                         rel_heights = c(1.1, 3.0))
+# 
+# ggsave("heat_dendro.tiff", g,
+#        device = "tiff",
+#        width = 8, height = 12, units = "in", dpi = 700,
+#        compression = "lzw")
 ```
 
 ```{r, echo = FALSE, eval = FALSE}
@@ -819,23 +925,109 @@ diab.heat1
 # tiff("community_analyses.tiff",
 #      width = 12, height = 6, units = "in", res = 300)
 # par(mfrow = c(1, 2))
-# plot(cssti.md, kind = "dendrogram", 
+# plot(cssti.md, kind = "dendrogram",
 #      main = "Community Difference Dendrogram - cSSTI class")
 # text(1.2, 0.845, "MRPP p-val = 0.07")
 # 
-# plot(diab.md, kind = "dendrogram", 
+# plot(diab.md, kind = "dendrogram",
 #      main = "Community Differences Dendrogram - Diabetic status")
 # text(2, 0.863, "MRPP p-val = <0.01")
 # dev.off()
 ```
 
-# Risk factor modelling
+```{r}
+factors <- orgs$species[c(5:9, 11, 26, 28:30, 32, 27, 41, 42)]
+
+diab.heat2 <- diabXorg %>%
+  reshape2::melt(id.vars = "diabetes") %>%
+  plyr::ddply(plyr::.(diabetes, variable),
+              summarise,
+              sum = sum(value)) %>%
+  group_by(diabetes) %>%
+  mutate(
+    prop = (sum / sum(sum)) * 100,
+    variable = factor(variable,
+                      labels = factors)
+    ) %>%
+  ungroup() %>%
+  ggplot(aes(x = diabetes, y = variable)) %>%
+  add(geom_tile(aes(fill = prop))) %>%
+  add(scale_fill_gradient(low = "navyblue",
+                          high = "darkorange1")) %>%
+  add(theme_minimal(18)) %>%
+  add(scale_y_discrete(limits = rev(factors))) %>%
+  add(guides(fill = guide_colorbar(barheight = 30))) %>%
+  add(labs(
+    x = "",
+    y = "",
+    fill = "%"
+    ))
+
+diab.heat2
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# marge <- theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+# g <- cowplot::plot_grid(dendro + marge, 
+#                         diab.heat2 + marge,
+#                         labels = c("A", "B"),
+#                         ncol = 1,
+#                         rel_heights = c(1.1, 3.0))
+# 
+# ggsave("heat_dendro.tiff", g,
+#        device = "tiff",
+#        width = 8, height = 12, units = "in", dpi = 700,
+#        compression = "lzw")
+```
+
+### Indicator species analysis
+
+indicator species analysis using the methods of Legendre & Dufrene. The goal of indicator analysis is to determine which species can be used as indicators of certain site groups. The method calculates an index that measures the association between a species and a site group. Specifically, the index is calculated between the species for diabetics and non-diabetics and looks for the group corresponding to the highest association value, the statistical significance of this relationship is tested using a permutation test.
+
+```{r}
+library(indicspecies)
+indic <- multipatt(diabXorg[-1], diabXorg$diabetes, control = how(nperm = 999))
+summary(indic)
+```
+
+*A. baumanii* is strongly and significantly associated with non-diabetic polymicrobial MRSA ABSSSI while *Staphylococcus spp.* are significantly associated with diabetic polymicrobial MRSA ABSSSI.
+
+indicator value components
+
+```{r}
+summary(indic, indvalcomp = TRUE)
+```
+
+The indicator value index is the product of two components, A and B:
+
+* A: p(surveyed site belongs to target site | species has been found)
+    + equivalent to *specificity* or *positive predictive value*
+* B: p(finding the species in sites belonging to the side group)
+    + equivalent to *sensitivity* or *fidelity*
+
+Here, *A. baumannii* is a good indicator for non-diabetic polymicrobial MRSA ABSSSI because it occurs in 80% of non-diabetic wounds and only 18% in diabetic wounds.
+
+Pearson's $\phi$ coefficient of association for binary vectors can be used similar to the above:
+
+```{r}
+indic_cor <- multipatt(diabXorg[-1], 
+                       diabXorg$diabetes,
+                       func = "r.g", 
+                       control = how(nperm = 999))
+summary(indic_cor)
+```
+
+*E. faecalis*, when examining the heatmap above, does appear to be more abundant in diabetic wounds, so, this analysis does make some sense.
+
+The differences between indicator analyses and correlation analyses are important: **correlation indices** are helpful for determining the preferences of species among groups (diabetics and non-diabetics) while **indicator value indices** are used for assessing the predictive values of species as indicators of those groups (diabetics vs. non-diabetics).
+
+# Risk factor predictive modelling
 
 ```{r}
 main_ml <- main %>%
   select(male, poly_infx, eld, obese, black, ltacf, diabetes,
-         kidney, device, chr_wnd, charl_cat, surg_yr, abx_yr, 
-         cssti_lev, los)
+         kidney, device, charl_cat, chr_wnd, surg_yr, abx_yr, 
+         cssti_lev, cult_days, steroid, ulc)
 ```
 
 Impute missing data
@@ -864,11 +1056,11 @@ dim(main_train); dim(main_test)
 # some models require all variables to be numeric (no factors)
 main_train_num <- main_train %>%
   mutate_all(funs(as.numeric)) %>%
-  mutate_at(vars(male:cssti_lev), funs(. - 1))
+  mutate_at(vars(male:cssti_lev, steroid:ulc), funs(. - 1))
 
 main_test_num <- main_test %>%
   mutate_all(funs(as.numeric)) %>%
-  mutate_at(vars(male:cssti_lev), funs(. - 1))
+  mutate_at(vars(male:cssti_lev, steroid:ulc), funs(. - 1))
 ```
 
 ## Fast and Frugal Trees
@@ -887,14 +1079,27 @@ coinfx.fft
 summary(coinfx.fft)
 ```
 
-```{r}
-plot(coinfx.fft, data = "test")
-# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
-# tiff("coinfx_fft.tiff", height = 12, width = 10, units = "in", res = 300)
-# plot(coinfx.fft, data = "test",
-#      cue.cex = 2,
-#      threshold.cex = 2,
-#      decision.cex = 2)
+```{r, fig.height = 12, fig.width = 10}
+plot(coinfx.fft,
+     data = "test",
+     cue.cex = 1.5,
+     cue.labels = c("Ulcer", "LTCF", "Charlson \n 4+", "Device"),
+     decision.cex = 1.5,
+     show.header = FALSE,
+     label.tree = "Decision Tree")
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# tiff("coinfx_fft.tiff",
+#      height = 10, width = 14, units = "in",
+#      res = 800, compression = "lzw")
+# plot(coinfx.fft,
+#      data = "test",
+#      cue.cex = 1.5,
+#      cue.labels = c("Ulcer", "LTCF", "Charlson \n 4+", "Hx Chronic \n Wounds"),
+#      decision.cex = 1.5,
+#      show.header = FALSE,
+#      label.tree = "Fast and Frugal Tree")
 # dev.off()
 ```
 
@@ -902,21 +1107,87 @@ plot(coinfx.fft, data = "test")
 plot(coinfx.fft, what = "cues")
 ```
 
-```{r}
-# coinfx.fff <- FFForest(poly_infx ~ .,
-#                        data = rbind(main_train_num, main_test_num),
-#                        ntree = 100,
-#                        train.p = 0.8)
+```{r, echo = TRUE, eval = FALSE}
+coinfx.fff <- FFForest(poly_infx ~ .,
+                       data = rbind(main_train_num, main_test_num),
+                       ntree = 100,
+                       train.p = 0.5,
+                       goal = "acc")
+```
+
+```{r, echo = FALSE, eval = TRUE}
 setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
 # saveRDS(coinfx.fff, "coinfx_fff.rds")
 coinfx.fff <- readRDS("coinfx_fff.rds")
 coinfx.fff
-# tiff("forest_of_FFTs.tiff", height = 12, width = 12, units = "in", res = 300)
-# plot(coinfx.fff, node.cex.lim = c(8, 16), line.cex.lim = c(0.8, 10))
+```
+
+```{r}
+plot(coinfx.fff, node.cex.lim = c(8, 16), line.cex.lim = c(0.8, 10))
+```
+
+```{r}
+# tiff("forest_of_FFTs.tiff", height = 6, width = 14, units = "in",
+#      res = 800, compression = "lzw")
+# plot(coinfx.fff,
+#      node.cex.lim = c(8, 16),
+#      line.cex.lim = c(0.8, 10))
 # dev.off()
 ```
 
-The above Fast and Frugal tree and forest suggests LTCF residence, LOS > 6 days, and a Charlson Score $\ge$ 4 as the 'biggest' predictors of a polymicrobial MRSA ABSSSI. A CSSTI level of 4+ and the existence of a medical device were so-so predictors.
+The above Fast and Frugal tree and forest suggests LTCF residence, Presentation of Ulcers, and a Charlson Score $\ge$ 4 as the 'biggest' predictors of a polymicrobial MRSA ABSSSI (included in 75% of the generated fast and frugal trees). A cSSTI level of 4+ and the existence of a medical device were so-so predictors. The network plot indicates that LTCF, Ulcers, Charlson's Score greater than 4, cSSTI class of 3 or 4, and implanted medical devices co-occured within each of the 100 FFTs.
+
+```{r, fig.height = 6, fig.width = 10}
+labels <- c("ABX past yr.",
+            "Charlson 4+",
+            "cSSTI 3+",
+            "Med Device",
+            "Diabetes",
+            "Age 65+",
+            "LTCF",
+            "Surgery past yr.",
+            "Ulcer")
+
+colorset <- RColorBrewer::brewer.pal(9, "Set1")
+
+tabletheme <- gridExtra::ttheme_minimal(
+  core = list(fg_params = list(cex = 2.0)),
+  colhead = list(fg_params = list(cex = 2.0)),
+  rowhead = list(fg_params = list(cex = 2.0))
+)
+
+confusion <- t(coinfx.fff$forest.stats$train[c(6:9, 11, 13)])
+confusion <- data.frame(Metric = round(confusion, 2))
+
+FFFimportance <- coinfx.fff$frequencies %>%
+  data.frame() %>%
+  mutate(Var1 = factor(Var1, labels = labels)) %>%
+  ggplot(aes(x = reorder(Var1, -Freq), 
+             y = Freq, 
+             fill = Var1)) %>%
+  add(geom_col(color = "black", alpha = 0.7)) %>%
+  add(geom_text(aes(label = Freq), size = 7, vjust = -1)) %>%
+  add(theme_trueMinimal(18)) %>%
+  add(theme(legend.position = "none")) %>%
+  add(scale_fill_brewer(palette = "Set1", direction = -1)) %>%
+  add(labs(
+    x = "Variable",
+    y = "Importance (%)"
+  )) %>%
+  add(expand_limits(y = c(0, 110))) %>%
+  add(annotation_custom(gridExtra::tableGrob(confusion,
+                                             theme = tabletheme),
+                        xmin = 8.5, xmax = 8.5, ymin = 60, ymax = 100))
+FFFimportance
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# setwd("S:/MartinEpi/Projects/Co-Infx/project/documents/")
+# tiff("FFFimportance.tiff", height = 6, width = 14, units = "in",
+#      res = 800, compression = "lzw")
+# FFFimportance
+# dev.off()
+```
 
 ## Logistic regression
 
@@ -939,9 +1210,9 @@ perf <- h2o.performance(coinfx.lr, df.test)
 h2o.confusionMatrix(perf)
 ```
 
-Accuracy is `r  round(((56 + 96) / (96 + 34 + 19 + 56)) * 100, 2)`%
+Accuracy is `r  round(((59 + 80) / (80 + 50 + 16 + 59)) * 100, 2)`%
 
-The error rate is `r round((1 - (56 + 96) / (96 + 34 + 19 + 56)) * 100, 2)`%
+The error rate is `r round((1 - (59 + 80) / (80 + 50 + 16 + 59)) * 100, 2)`%
 
 ## Gradient Boosting and Random Forest
 
@@ -965,9 +1236,9 @@ h2o.confusionMatrix(perf)
 h2o.varimp_plot(coinfx.gbm)
 ```
 
-Accuracy is `r  round(((57 + 91) / (91 + 39 + 18 + 57)) * 100, 2)`%
+Accuracy is `r  round(((57 + 93) / (93 + 37 + 18 + 57)) * 100, 2)`%
 
-The error rate is `r round((1 - (57 + 91) / (91 + 39 + 18 + 57)) * 100, 2)`%
+The error rate is `r round((1 - (57 + 93) / (93 + 37 + 18 + 57)) * 100, 2)`%
 
 ```{r}
 # train and cross-validate RF
@@ -983,11 +1254,92 @@ h2o.confusionMatrix(perf)
 h2o.varimp_plot(coinfx.rf)
 ```
 
-Accuracy is `r  round(((79 + 60) / (79 + 51 + 15 + 60)) * 100, 2)`%
+Accuracy is `r  round(((78 + 65) / (78 + 52 + 10 + 65)) * 100, 2)`%
 
-The error rate is `r round((1 - (79 + 69) / (79 + 51 + 15 + 60)) * 100, 2)`%
+The error rate is `r round((1 - (78 + 65) / (78 + 52 + 10 + 65)) * 100, 2)`%
 
 Worse than GBM
+
+## LASSO/Elastic-Net
+
+```{r}
+detach('package:FFTrees')
+detach('package:purrr')
+detach('package:h2o')
+library(glmnet)
+
+y <- as.integer(main_train_num[, "poly_infx"])
+x <- data.matrix(main_train_num[, c(1, 3:15)])
+
+lasso1 <- glmnet(x = x,
+                 y = y,
+                 family = "binomial",
+                 alpha = 0.5)
+
+par(mfrow = c(1, 3))
+plot(lasso1, xvar = "dev", label = TRUE)
+plot(lasso1, xvar = "lambda", label = TRUE)
+plot(lasso1, xvar = "norm", label = TRUE)
+```
+
+Copied from the *glmnet* vignette:
+
+Prediction is a little different for logistic from Gaussian, mainly in the option type. "link" and "response" are never equivalent and "class" is only available for logistic regression. In summary, 
+
+    * "link" gives the linear predictors
+    * "response" gives the fitted probabilities
+    * "class" produces the class label corresponding to the maximum probability.
+    * "coefficients" computes the coefficients at values of s
+    * "nonzero" retuns a list of the indices of the nonzero coefficients for each value of s.
+
+For "binomial" models, results ("link", "response", "coefficients", "nonzero") are returned only for the class corresponding to the second level of the factor response.
+
+Making predictions at class labels of $\lambda \in \left\{0.05, 0.01\right\}$ where $\lambda$ is the regularization parameter, that which controls the overall strength of the penalty. The penalty determines coefficient 'shrinkage' to zero and serves as our selection mechanism.
+
+```{r}
+pred1 <- predict(lasso1,
+                 newx = data.matrix(main_test_num[, c(1, 3:15)]),
+                 type = "class",
+                 s = c(0.05, 0.01))
+
+pred.tab <- table(main_test_num[,"poly_infx"], as.numeric(pred1[, 1]))
+pred.tab
+```
+
+accuracy with $\lambda = 0.05$ `r round(sum(diag(pred.tab)) / sum(pred.tab) * 100, 2)`%.
+
+```{r}
+pred.tab <- table(main_test_num[,"poly_infx"], as.numeric(pred1[, 2]))
+pred.tab
+```
+
+accuracy with $\lambda = 0.01$ is `r round(sum(diag(pred.tab)) / sum(pred.tab) * 100, 2)`%.
+
+Cross-Valdiation with 10-folds using misclassification error as the criterion:
+
+```{r}
+lasso.cv <- cv.glmnet(x = x, y = y, family = "binomial", type.measure = "class")
+plot(lasso.cv)
+```
+
+```{r}
+coef(lasso.cv, s = "lambda.1se")
+pred2 <- predict(lasso.cv, 
+                 newx = data.matrix(main_test_num[, c(1, 3:15)]),
+                 type = "class",
+                 s = "lambda.1se")
+pred.tab <- table(main_test_num[,"poly_infx"], as.numeric(pred2[, 1]))
+pred.tab
+```
+
+accuracy with $\lambda = 0.02$ is `r round(sum(diag(pred.tab)) / sum(pred.tab) * 100, 2)`%. This is not as good, however, prediction this this model is not really the primary goal, the goal is to select a sparse matrix of important cofficients.
+
+Cross-Valdiation with 10-folds using AUC as the criterion (ROC curve):
+
+```{r}
+lasso.cv <- cv.glmnet(x = x, y = y, family = "binomial", type.measure = "auc")
+plot(lasso.cv)
+```
 
 # Outcome modelling
 
@@ -1020,11 +1372,41 @@ pchisq(2 * (logLik(los_nb) - logLik(test)), df = 1, lower.tail = FALSE)
 
 RR <- exp(cbind(estimate = coef(los_nb), confint(los_nb)))
 RR
-detach('package:MASS')
-rm(los_nb, test, RR)
 ```
 
-having a polymicrobial MRSA ABSSSI increases the expected log count of the number of days in the hospital by 0.74 vs.a mono-microbial MRSA ABSSSI
+having a polymicrobial MRSA ABSSSI increases the expected log count of the number of days in the hospital by 0.74 vs.a mono-microbial MRSA ABSSSI.
+
+As for fit, check the poisson model,
+
+```{r}
+boot::glm.diag.plots(test)
+```
+
+Against the negative binomial model,
+
+```{r}
+boot::glm.diag.plots(los_nb)
+```
+
+Much better fit.
+
+```{r}
+los_nb <- glm.nb(los ~ poly_infx + age + chr_wnd + charl_cat + cssti_lev,
+                 data = main)
+summary(los_nb)
+
+test <- glm(los ~ poly_infx + age + chr_wnd + charl_cat + cssti_lev,
+            family = "poisson",
+            data = main)
+pchisq(2 * (logLik(los_nb) - logLik(test)), df = 1, lower.tail = FALSE)
+boot::glm.diag.plots(los_nb)
+
+RR <- exp(cbind(estimate = coef(los_nb), confint(los_nb)))
+RR
+
+rm(los_nb, test, RR)
+detach('package:MASS')
+```
 
 ```{r, warning = FALSE, message = FALSE}
 lapply(outcome.df[, outcomes],
@@ -1075,7 +1457,7 @@ table(main.sites$site)
 dim(main.sites)
 ```
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 lapply(main.sites[, outcomes],
        function(var) {
          mod <- glm(var ~ poly_infx + age + chr_wnd + charl_cat + cssti_lev + site,
@@ -1093,7 +1475,7 @@ lapply(main.sites[, outcomes],
 
 Subsets analysis
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 site_cats <- unique(main.sites$site)
 stratLogit <- function(var) {
   form <- as.formula(paste0(var, "~ poly_infx+age+chr_wnd+charl_cat+cssti_lev"))
@@ -1125,3 +1507,157 @@ names(modelLists) <- outcomes
 modelLists
 ```
 
+Firth's logistic regression to handle sparsity/separation between predictor and outcome
+
+```{r}
+library(logistf)
+
+stratLogistf <- function(var) {
+  form <- as.formula(paste0(var, "~ poly_infx+age+chr_wnd+charl_cat+cssti_lev"))
+  models <- vector("list", length(site_cats))
+  for (i in 1:length(site_cats)) {
+    name <- site_cats[i]
+    mod <- logistf(formula = form,
+                   data = main.sites[main.sites$site == site_cats[i], ])
+    n <- mod$n
+    prop <- round((n / 688) * 100, 2)
+    OR <- round(exp(mod$coefficients)[2], 2)
+    LB <- round(as.numeric(exp(confint(mod))[2, 1]), 2)
+    UB <- round(as.numeric(exp(confint(mod))[2, 2]), 2)
+    models[[i]] <- cbind(OR, LB, UB, n, prop)
+  }
+  models <- do.call(rbind, models)
+  row.names(models) <- site_cats
+  return(models)
+}
+
+modelLists <- vector("list", length(outcomes))
+for(i in 1:length(outcomes)) {
+  modelLists[[i]] <- stratLogistf(outcomes[i])
+}
+names(modelLists) <- outcomes
+
+modelLists
+```
+
+## Severity of outcomes vs. polymicrobial frequency
+
+```{r}
+psych::describe(main$org_sum)
+```
+
+```{r, fig.height = 4, fig.width = 4}
+hist(main$org_sum)
+```
+
+The median number of organisms in polymicrobial wounds was 2, ranging from 1 to 11.
+
+How do the odds of our outcomes change as the number of organisms in the wound increase?
+
+```{r}
+models <- lapply(outcome.df[, outcomes],
+                 function(var) {
+                   mod <- glm(var ~ org_sum, 
+                              data = outcome.df,
+                              family = binomial,
+                              subset = (poly_infx == 1))
+                   OR <- exp(coefficients(mod)[2])
+                   CI <- exp(confint(mod)[2, ])
+                   c(colnames(var), OR, CI)
+                   }
+                 )
+models
+```
+
+It really doesn't affect the occurrence of each individual outcome. What about the number of individual outcomes as an indicator of severity?
+
+```{r}
+temp <- outcome.df %>%
+  mutate(sum_outcomes = rowSums(.[c(171, 194, 93:95, 97:98)])) %>%
+  filter(!is.na(sum_outcomes))
+
+test <- glm(sum_outcomes ~ org_sum, data = temp)
+exp(coefficients(test))
+exp(confint(test))
+```
+
+The answer is ... no. No, there is not any indication that, with more microbes inhabiting a polymicrobial MRSA ABSSSI, there will be more severe outcomes or more 'adverse' outcomes. Perhaps because all of these infections already have MRSA in them. Yeah, that's probably it.
+
+# Misc. Functions
+
+```{r}
+# function to generate heatmaps for our specific needs
+# requires ggplot2, magrittr
+#' @param df data.frame object holding variables x, y, and fill
+#' @param x vector of character or factor values for the x axis
+#' @param y vector of character or factor values for the y axis
+#' @param fill vector of numeric values for heat intensities
+#' @param xlab label for x-axis
+#' @param barheight height of the guide legend bar
+#' @param barwidth width of the guide legend bar
+#' @param legend_top position guide legend at top of heatmap
+#' @param angle angle of x-axis ticks
+#' @param yremove if TRUE, remove all y axis items
+
+heatMap <- function(df, x, y, fill, xlab,
+                    barheight = NULL, barwidth = NULL,
+                    legend_top = FALSE,
+                    angle = TRUE,
+                    yremove = FALSE) {
+  heat <- df %>%
+    ggplot(aes_string(x = x, y = y, fill = fill)) %>%
+    add(geom_tile()) %>%
+    add(scale_fill_gradient(low = "navyblue",
+                            high = "darkorange1")) %>%
+    add(theme_minimal(14)) %>%
+    add(scale_y_discrete(limits = rev(levels(df$variable)))) %>%
+    add(labs(
+      x = xlab,
+      y = "",
+      fill = "Proportion"
+    ))
+  if (angle) 
+    heat <- heat + theme(
+      axis.text.x = element_text(angle = 45,
+                                 hjust = 1,
+                                 face = "bold")
+    )
+  if (legend_top) 
+    heat <- heat + 
+      theme(legend.position = "top") +
+      guides(fill = guide_colorbar(barwidth = barwidth,
+                                   barheight = barheight))
+  else
+    heat <- heat + guides(fill = guide_colorbar(barheight = barheight))
+  if (yremove) 
+    heat <- heat + theme(
+      axis.title.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  return(heat)
+}
+
+# true minimal theme for plotting ggplot objects
+theme_trueMinimal <- function(base_size = 16, base_family = "") {
+    theme_bw(base_size = base_size, base_family = base_family) %+replace% 
+        theme(axis.ticks = element_blank(), 
+              legend.background = element_blank(), 
+              legend.key = element_blank(), 
+              panel.background = element_blank(), 
+              strip.background = element_blank(), 
+              panel.border = element_blank(),
+              panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),
+              plot.background = element_blank(), 
+              axis.line = element_line(), 
+              axis.line.y = element_blank(),
+              complete = TRUE)
+}
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
